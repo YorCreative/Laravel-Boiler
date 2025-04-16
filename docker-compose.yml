@@ -1,0 +1,108 @@
+
+services:
+    laravel-boiler-app:
+        image: laravel-boiler-app
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: laravel-boiler-app
+        restart: unless-stopped
+        tty: true
+        environment:
+            SERVICE_NAME: app
+            SERVICE_TAGS: dev
+        working_dir: /var/www
+        volumes:
+            - ./:/var/www
+            - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+
+    laravel-boiler-nginx:
+        image: nginx:alpine
+        container_name: laravel-boiler-nginx
+        restart: unless-stopped
+        tty: true
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./:/var/www
+            - ./docker/nginx/conf.d/:/etc/nginx/conf.d/
+
+    laravel-boiler-mysql:
+        image: mysql:8.4.1
+        container_name: laravel-boiler-mysql
+        restart: unless-stopped
+        tty: true
+        ports:
+            - "3306:3306"
+        environment:
+            MYSQL_DATABASE: laravel_boiler
+            MYSQL_ROOT_PASSWORD: secret
+            SERVICE_TAGS: dev
+            SERVICE_NAME: mysql
+        volumes:
+            - ./docker/dbdata/mysql:/var/lib/mysql/
+            - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+            - ./docker/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+
+    laravel-boiler-mailhog:
+        image: laravel-boiler-mailhog
+        build:
+            context: .
+            dockerfile: MailHog.Dockerfile
+        container_name: laravel-boiler-mailhog
+        logging:
+            driver: 'none'
+        environment:
+            MT_USER: laravel_boiler
+            MT_PASSWD: secret
+            SERVICE_TAGS: dev
+            SERVICE_NAME: mailhog
+        volumes:
+            - mailhogdata:/data
+            - ./docker/dbdata/mailhogdata:/data
+        ports:
+            - "8025:1025"
+            - "8100:8025"
+
+    laravel-boiler-redis:
+        image: redis:latest
+        container_name: laravel-boiler-redis
+        restart: unless-stopped
+        command: ["redis-server", "--appendonly", "yes"]
+        volumes:
+            - redisdata:/data
+            - ./docker/dbdata/redis:/data
+        ports:
+            - "6379:6379"
+
+    laravel-boiler-redis-insight:
+        image: redis/redisinsight:latest
+        container_name: laravel-boiler-redis-insight
+        restart: unless-stopped
+        volumes:
+            - redisinsight:/data
+            - ./docker/dbdata/redisinsight:/data
+        ports:
+            - "5540:5540"
+        environment:
+            RI_APP_PORT: 5540
+            RI_REDIS_HOST: laravel-boiler-redis
+            RI_REDIS_PORT: 6379
+            RI_REDIS_ALIAS: "Local Redis"
+        networks:
+            - laravel-boiler-network
+
+networks:
+    laravel-boiler-network:
+        driver: bridge
+
+volumes:
+    dbdata:
+        driver: local
+    redisdata:
+        driver: local
+    redisinsight:
+        driver: local
+    mailhogdata:
+        driver: local

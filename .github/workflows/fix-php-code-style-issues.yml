@@ -1,0 +1,26 @@
+name: Laravel-boiler Linter
+
+on:
+  push:
+    branches: [main, v1-dev]
+  pull_request:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  php-code-styling:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Fix Laravel-boiler PHP code style issues
+        uses: aglipanci/laravel-pint-action@latest
+
+      - name: Commit Laravel-boiler changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Fixed code style issues

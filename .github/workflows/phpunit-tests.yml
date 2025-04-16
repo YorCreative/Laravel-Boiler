@@ -1,0 +1,113 @@
+name: Laravel-boiler Tests Suite
+
+on:
+  push:
+    branches: [main, v1-dev]
+  pull_request:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  laravel-boiler-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      laravel-boiler-mysql:
+        image: mysql:8.4.1
+        env:
+          MYSQL_DATABASE: laravel_boiler
+          MYSQL_ROOT_PASSWORD: secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -psecret"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      laravel-boiler-redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      laravel-boiler-mailhog:
+        image: mailhog/mailhog:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+
+    name: PHPUnit Tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set permissions for workspace
+        run: sudo chown -R $USER:$USER $GITHUB_WORKSPACE
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo, pdo_mysql, redis
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+        working-directory: ${{ github.workspace }}
+
+      - name: Install NPM dependencies
+        run: npm install
+        working-directory: ${{ github.workspace }}
+
+      - name: Wait for MySQL to be ready
+        run: |
+          echo "⌛ Waiting for MySQL..."
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -u root -psecret --silent; then
+              echo "✅ MySQL is up!"
+              break
+            fi
+            sleep 2
+          done
+        working-directory: ${{ github.workspace }}
+
+      - name: Initialize Laravel-boiler Environment
+        run: bash docker/utility/init-testing.sh
+        working-directory: ${{ github.workspace }}
+
+      - name: Run Laravel-boiler tests
+        run: php artisan test
+        working-directory: ${{ github.workspace }}
+
+      - name: Print Docker logs on failure
+        if: failure()
+        run: |
+          MYSQL_ID=$(docker ps -q -f name=laravel-boiler-mysql)
+          REDIS_ID=$(docker ps -q -f name=laravel-boiler-redis)
+          MAILHOG_ID=$(docker ps -q -f name=laravel-boiler-mailhog)
+
+          echo "🔍 MySQL Logs:"
+          if [ -n "$MYSQL_ID" ]; then docker logs "$MYSQL_ID"; else echo "MySQL container not found"; fi
+
+          echo "🔍 Redis Logs:"
+          if [ -n "$REDIS_ID" ]; then docker logs "$REDIS_ID"; else echo "Redis container not found"; fi
+
+          echo "🔍 Mailhog Logs:"
+          if [ -n "$MAILHOG_ID" ]; then docker logs "$MAILHOG_ID"; else echo "Mailhog container not found"; fi
